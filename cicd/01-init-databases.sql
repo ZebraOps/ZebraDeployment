@@ -1,0 +1,12 @@
+-- 初始化数据库
+CREATE USER gitlab WITH PASSWORD 'gitlab123';
+CREATE DATABASE gitlabhq_production;
+GRANT ALL PRIVILEGES ON DATABASE gitlabhq_production TO gitlab;
+
+CREATE USER jenkins WITH PASSWORD 'jenkins123';
+CREATE DATABASE jenkins;
+GRANT ALL PRIVILEGES ON DATABASE jenkins TO jenkins;
+
+CREATE USER harbor WITH PASSWORD 'harbor123';
+CREATE DATABASE registry;
+GRANT ALL PRIVILEGES ON DATABASE registry TO harbor;

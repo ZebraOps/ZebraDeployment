@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  etcd:
+    container_name: apisix-etcd
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/etcd:3.5.7
+    volumes:
+      - ./data/etcd-data:/bitnami/etcd/data
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    environment:
+      ETCD_ENABLE_V2: "true"
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://192.168.41.54:2379"
+      ETCD_AUTO_COMPACTION_RETENTION: "1"
+      ETCD_SNAPSHOT_COUNT: "10000"
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+    networks:
+      apisix-net:
+        ipv4_address: 172.25.0.2
+
+  apisix:
+    container_name: apisix
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/apisix:3.11.0-debian
+    ports:
+      - "9080:9080"
+      - "9180:9180"
+      - "9443:9443"
+      - "9092:9092"
+      - "9100:9100"
+      - "9091:9091"
+    environment:
+      APISIX_DEPLOYMENT_ETCD_HOST: '["http://etcd:2379"]'
+    volumes:
+      - ./apisix_config/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    networks:
+      apisix-net:
+        ipv4_address: 172.25.0.3
+    depends_on:
+      - etcd
+
+  apisix-dashboard:
+    container_name: apisix-dashboard
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/apisix-dashboard
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./apisix_dashboard/conf.yaml:/usr/local/apisix-dashboard/conf/conf.yaml:ro
+    networks:
+      apisix-net:
+        ipv4_address: 172.25.0.4
+    depends_on:
+      - apisix
+
+  zipkin:
+    container_name: zipkin
+    image: openzipkin/zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      apisix-net:
+        ipv4_address: 172.25.0.9
+    depends_on:
+      - apisix
+
+  prometheus:
+    container_name: prometheus
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/prometheus:latest
+    user: root
+    ports:
+      - "9090:9090"
+    volumes:
+      # 建议使用相对路径或确保宿主机 /opt/zebra_gateway/... 路径下确实是文件
+      - /opt/zebra_gateway/data/prometheus:/prometheus/data
+      - /opt/zebra_gateway/prometheus_conf/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus/data'
+      - '--web.enable-lifecycle'
+    networks:
+      apisix-net:
+        ipv4_address: 172.25.0.5
+    restart: always
+
+  grafana:
+    container_name: apisix-grafana
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/grafana:latest
+    volumes:
+      - ./grafana_conf/provisioning:/etc/grafana/provisioning
+      - ./grafana_conf/dashboards:/var/lib/grafana/dashboards
+      - ./grafana_conf/config/grafana.ini:/etc/grafana/grafana.ini
+    networks:
+      apisix-net:
+        ipv4_address: 172.25.0.6
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    ports:
+      - "3000:3000"
+
+  redis:
+    container_name: redis
+    image: redis:5.0
+    volumes:
+      - ./data/redis:/data
+    ports:
+      - "6379:6379"
+    restart: always
+    networks:
+      apisix-net:
+        ipv4_address: 172.25.0.7
+
+  mysql:
+    container_name: mysql
+    image: mysql:8.0
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "pass123"
+      TZ: Asia/Shanghai
+    restart: always
+    networks:
+      apisix-net:
+        ipv4_address: 172.25.0.8
+
+networks:
+  apisix-net:
+    name: apisix-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24
+          gateway: 172.25.0.1

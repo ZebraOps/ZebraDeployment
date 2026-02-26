@@ -1,0 +1,82 @@
+services:
+  # ----------------------------------------------------
+  # 1. GitLab (代码仓库与CI/CD Runner)
+  # ----------------------------------------------------
+  gitlab:
+    container_name: gitlab
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/gitlab-ce:18.5.1-ce.0  # CE: Community Edition
+    hostname: 'gitlab.local' # 替换为您的域名或 IP
+    restart: always
+    environment:
+      # 设置外部访问的URL和SSH端口
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8080' # GitLab Web访问端口
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+    ports:
+      - '8080:80'    # Web 访问
+      - '2222:22'  # SSH 访问
+    volumes:
+      - ./data/gitlab/config:/etc/gitlab
+      - ./data/gitlab/logs:/var/log/gitlab
+      - ./data/gitlab/data:/var/opt/gitlab
+    shm_size: '256m' # 推荐设置，以避免PostgreSQL OOM
+
+  # ----------------------------------------------------
+  # 2. Jenkins (CI/CD 编排器)
+  # ----------------------------------------------------
+  jenkins:
+    container_name: jenkins
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/jenkins:2.506-slim-jdk17 # 使用内置JDK17的LTS版本
+    user: root # 有时为了权限问题，需要root
+    restart: always
+    privileged: true # 赋予权限，以便在Jenkins中运行Docker命令
+    ports:
+      - '8081:8080'  # Web 访问端口
+      - '50000:50000' # Agent 节点通信端口
+    volumes:
+      - ./data/jenkins:/var/jenkins_home
+      # 映射Docker Socket，允许Jenkins在容器内操作宿主机的Docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker
+
+  # ----------------------------------------------------
+  # 3. Harbor (Docker 镜像仓库) - 简化版本
+  # 注意: Harbor的完整启动需要运行其配置脚本。此配置用于展示核心组件。
+  # 强烈建议使用 Harbor 官方 installer 进行初始化配置后再使用 compose。
+  # ----------------------------------------------------
+  harbor-core:
+    container_name: harbor-core
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/harbor-core:v2.13.3 # 请替换为实际使用的版本
+    restart: always
+    environment:
+      # 实际部署时，这些值需要从 harbor.yml 配置文件导入
+      HARBOR_ADMIN_PASSWORD: harbor123
+      HARBOR_HOST: '192.168.192.87' # 替换为您的域名或 IP
+      # ... 其他配置，如数据库连接、Redis连接等
+    ports:
+      - "8443:8443" # HTTPS 访问
+    volumes:
+      - ./data/harbor/config:/etc/harbor
+    depends_on:
+      - harbor-db
+      - harbor-redis
+
+  # 4. Harbor 依赖数据库 (PostgreSQL)
+  harbor-db:
+    container_name: harbor-db
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/postgres:13
+    restart: always
+    environment:
+      # 请确保这些密码安全且与 harbor-core 的配置一致
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_USER: harbor
+    volumes:
+      - ./data/harbor/database:/var/lib/postgresql/data
+
+  # 5. Harbor 依赖缓存 (Redis)
+  harbor-redis:
+    container_name: harbor-redis
+    image: registry.cn-shanghai.aliyuncs.com/numa-images/redis:8.4.0
+    restart: always
+    volumes:
+      - ./data/harbor/redis:/var/lib/redis

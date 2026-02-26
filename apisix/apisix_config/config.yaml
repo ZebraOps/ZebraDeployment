@@ -1,0 +1,108 @@
+deployment:
+  admin:
+    admin_key:
+      - name: admin
+        key: edd1c9f034335f136f87ad84b625c8f1
+        role: admin
+    allow_admin:
+      - 0.0.0.0/0
+
+plugins:
+  - real-ip
+  - proxy-rewrite
+  - prometheus
+  - opentelemetry
+  - zipkin
+
+plugin_attr:
+  prometheus:
+    export_addr:
+      ip: "0.0.0.0"
+      port: 9091
+
+
+
+curl http://127.0.0.1:9180/apisix/admin/plugin_metadata/opentelemetry -H "X-API-KEY: edd1c9f034335f136f87ad84b625c8f1" -X PUT -d '
+{
+    "trace_id_source": "x-request-id",
+    "resource": {
+      "service.name": "APISIX"
+    },
+    "collector": {
+      "address": "http://192.168.41.54:4318",
+      "request_timeout": 3,
+      "request_headers": {
+        "Authorization": "token"
+      }
+    },
+    "batch_span_processor": {
+      "drop_on_queue_full": false,
+      "max_queue_size": 1024,
+      "batch_timeout": 2,
+      "inactive_timeout": 1,
+      "max_export_batch_size": 16
+    },
+    "set_ngx_var": false
+}'
+
+
+curl "http://127.0.0.1:9180/apisix/admin/routes" -X PUT \
+  -H "X-API-KEY: edd1c9f034335f136f87ad84b625c8f1" \
+  -d '{
+    "id": "otel-tracing-route",
+    "uri": "/anything",
+    "plugins": {
+      "opentelemetry": {
+        "sampler": {
+          "name": "always_on"
+        }
+      }
+    },
+    "upstream": {
+      "type": "roundrobin",
+      "nodes": {
+        "httpbin.org": 1
+      }
+    }
+  }'
+
+
+
+curl "http://192.168.41.54:9080/anything"
+
+
+
+
+
+
+{
+  "uri": "/anything",
+  "name": "",
+  "plugins": {
+    "opentelemetry": {
+      "resource": {
+        "service.name": "anything-api"
+      },
+      "sampler": {
+        "name": "always_on"
+      }
+    }
+  },
+  "upstream": {
+    "nodes": [
+      {
+        "host": "httpbin.org",
+        "weight": 1
+      }
+    ],
+    "type": "roundrobin",
+    "hash_on": "vars",
+    "scheme": "http",
+    "pass_host": "pass"
+  },
+  "status": 1
+}
+
+
+Request Error Code: 10000
+schema validate failed: name: String length must be greater than or equal to 1 upstream.nodes: Must validate at least one schema (anyOf) upstream.nodes.0: port is required
